@@ -3,7 +3,6 @@ import pandas as pd
 import os
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-import plotly.express as px
 
 st.set_page_config(page_title="AI Dashboard", layout="wide")
 
@@ -15,7 +14,7 @@ st.title("🧠 AI Product Intelligence Dashboard")
 category = st.sidebar.selectbox("Select Category", ["TV", "PETRIN"])
 
 # =========================
-# UPLOAD FILE
+# FILE UPLOAD
 # =========================
 file = st.sidebar.file_uploader("Upload NEW Excel", type=["xlsx"])
 
@@ -27,7 +26,7 @@ if file:
     st.success("✅ New data uploaded & saved")
 
 # =========================
-# SMART EXCEL LOADER
+# SMART EXCEL LOADER (ROBUST)
 # =========================
 def load_excel(path):
     xls = pd.ExcelFile(path)
@@ -36,6 +35,7 @@ def load_excel(path):
     df = pd.read_excel(path, sheet_name=sheet)
     df = df.dropna(how="all")
 
+    # Fix broken headers (Unnamed columns issue)
     if df.columns.astype(str).str.contains("Unnamed").all():
         df = pd.read_excel(path, sheet_name=sheet, header=None)
         df = df.dropna(how="all")
@@ -89,7 +89,7 @@ if category == "TV":
     size_col = find_col(df, ["POUCES", "INCH", "SIZE"])
 
     if not price_col or not size_col:
-        st.error("Missing TV columns")
+        st.error("Missing TV columns (PRIX / POUCES)")
         st.stop()
 
     df["price"] = pd.to_numeric(
@@ -150,7 +150,7 @@ df_clean = df.dropna(subset=features)
 st.write("📊 Clean dataset size:", df_clean.shape)
 
 if len(df_clean) < 3:
-    st.error("Not enough data for clustering")
+    st.error("Not enough data for clustering (min 3 rows required)")
     st.stop()
 
 # =========================
@@ -199,28 +199,25 @@ st.subheader("📋 Live Data")
 st.dataframe(df, use_container_width=True)
 
 # =========================
-# CHART 1: SEGMENT COUNT
+# CHART 1: SEGMENT DISTRIBUTION
 # =========================
 st.subheader("📦 Products per Segment")
-
 st.bar_chart(df["segment_name"].value_counts().sort_values())
 
 # =========================
-# CHART 2: PRICE DISTRIBUTION (SAFE)
+# CHART 2: PRICE DISTRIBUTION
 # =========================
 st.subheader("💰 Price Distribution")
-
 st.bar_chart(df["price"].dropna().value_counts().sort_index())
 
 # =========================
 # CHART 3: AVG PRICE BY SEGMENT
 # =========================
 st.subheader("📊 Avg Price by Segment")
-
 st.bar_chart(df.groupby("segment_name")["price"].mean().sort_values())
 
 # =========================
-# CHART 4: SCATTER (AI VIEW)
+# CHART 4: AI SCATTER VIEW
 # =========================
 st.subheader("📈 AI Cluster View")
 
@@ -232,24 +229,17 @@ else:
         st.scatter_chart(df[cols].dropna())
 
 # =========================
-# CHART 5: TOP PRODUCTS
+# TOP PRODUCTS
 # =========================
 st.subheader("💎 Top 10 Expensive Products")
-
 st.dataframe(df.sort_values("price", ascending=False).head(10))
 
 # =========================
-# CHART 6: PIE CHART (PLOTLY - NO ERRORS)
+# SIMPLE PIE (NO DEPENDENCIES)
 # =========================
-st.subheader("🥧 Market Share")
+st.subheader("🥧 Market Share (Simple)")
 
-fig = px.pie(
-    df,
-    names="segment_name",
-    title="Market Share by Segment"
-)
-
-st.plotly_chart(fig, use_container_width=True)
+st.bar_chart(df["segment_name"].value_counts())
 
 # =========================
 # INSIGHT
