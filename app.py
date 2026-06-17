@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-import matplotlib.pyplot as plt
+import plotly.express as px
 
 st.set_page_config(page_title="AI Dashboard", layout="wide")
 
@@ -43,7 +43,7 @@ def load_excel(path):
         for i in range(min(10, len(df))):
             if df.iloc[i].notna().sum() > 2:
                 df.columns = df.iloc[i]
-                df = df[i + 1 :]
+                df = df[i + 1:]
                 break
 
     df = df.reset_index(drop=True)
@@ -185,7 +185,11 @@ col1.metric("Total Products", len(df))
 avg_price = df["price"].mean()
 col2.metric("Avg Price", f"{avg_price:.0f} DA" if pd.notna(avg_price) else "N/A")
 
-top_segment = df["segment_name"].value_counts().idxmax()
+if df["segment_name"].notna().any():
+    top_segment = df["segment_name"].value_counts().idxmax()
+else:
+    top_segment = "Unknown"
+
 col3.metric("Top Segment", top_segment)
 
 # =========================
@@ -198,10 +202,11 @@ st.dataframe(df, use_container_width=True)
 # CHART 1: SEGMENT COUNT
 # =========================
 st.subheader("📦 Products per Segment")
+
 st.bar_chart(df["segment_name"].value_counts().sort_values())
 
 # =========================
-# CHART 2: PRICE DISTRIBUTION
+# CHART 2: PRICE DISTRIBUTION (SAFE)
 # =========================
 st.subheader("💰 Price Distribution")
 
@@ -210,14 +215,12 @@ st.bar_chart(df["price"].dropna().value_counts().sort_index())
 # =========================
 # CHART 3: AVG PRICE BY SEGMENT
 # =========================
-st.subheader("📊 Average Price by Segment")
+st.subheader("📊 Avg Price by Segment")
 
-st.bar_chart(
-    df.groupby("segment_name")["price"].mean().sort_values()
-)
+st.bar_chart(df.groupby("segment_name")["price"].mean().sort_values())
 
 # =========================
-# CHART 4: SCATTER (AI CLUSTERS)
+# CHART 4: SCATTER (AI VIEW)
 # =========================
 st.subheader("📈 AI Cluster View")
 
@@ -229,23 +232,24 @@ else:
         st.scatter_chart(df[cols].dropna())
 
 # =========================
-# CHART 5: TOP EXPENSIVE
+# CHART 5: TOP PRODUCTS
 # =========================
 st.subheader("💎 Top 10 Expensive Products")
 
 st.dataframe(df.sort_values("price", ascending=False).head(10))
 
 # =========================
-# CHART 6: PIE CHART
+# CHART 6: PIE CHART (PLOTLY - NO ERRORS)
 # =========================
 st.subheader("🥧 Market Share")
 
-fig, ax = plt.subplots()
-df["segment_name"].value_counts().plot.pie(
-    autopct="%1.1f%%",
-    ax=ax
+fig = px.pie(
+    df,
+    names="segment_name",
+    title="Market Share by Segment"
 )
-st.pyplot(fig)
+
+st.plotly_chart(fig, use_container_width=True)
 
 # =========================
 # INSIGHT
