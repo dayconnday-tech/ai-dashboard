@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="AI Dashboard", layout="wide")
 
@@ -26,23 +27,19 @@ if file:
     st.success("✅ New data uploaded & saved")
 
 # =========================
-# SMART EXCEL LOADER (ROBUST)
+# SMART EXCEL LOADER
 # =========================
 def load_excel(path):
     xls = pd.ExcelFile(path)
     sheet = xls.sheet_names[0]
 
     df = pd.read_excel(path, sheet_name=sheet)
-
-    # remove empty rows
     df = df.dropna(how="all")
 
-    # fix broken headers (Unnamed case)
     if df.columns.astype(str).str.contains("Unnamed").all():
         df = pd.read_excel(path, sheet_name=sheet, header=None)
         df = df.dropna(how="all")
 
-        # find first valid header row
         for i in range(min(10, len(df))):
             if df.iloc[i].notna().sum() > 2:
                 df.columns = df.iloc[i]
@@ -92,7 +89,7 @@ if category == "TV":
     size_col = find_col(df, ["POUCES", "INCH", "SIZE"])
 
     if not price_col or not size_col:
-        st.error("Missing TV columns (PRIX / POUCES)")
+        st.error("Missing TV columns")
         st.stop()
 
     df["price"] = pd.to_numeric(
@@ -153,19 +150,19 @@ df_clean = df.dropna(subset=features)
 st.write("📊 Clean dataset size:", df_clean.shape)
 
 if len(df_clean) < 3:
-    st.error("Not enough valid data for clustering (minimum 3 rows required)")
+    st.error("Not enough data for clustering")
     st.stop()
 
 # =========================
-# SAFE KMEANS
+# KMEANS
 # =========================
 n_clusters = max(2, min(4, len(df_clean)))
 
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(df_clean[features])
+X = scaler.fit_transform(df_clean[features])
 
 model = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-df.loc[df_clean.index, "segment"] = model.fit_predict(X_scaled)
+df.loc[df_clean.index, "segment"] = model.fit_predict(X)
 
 segment_map = {
     0: "Budget",
@@ -177,7 +174,7 @@ segment_map = {
 df["segment_name"] = df["segment"].map(segment_map)
 
 # =========================
-# KPI SECTION
+# KPIs
 # =========================
 st.subheader("📊 KPIs")
 
@@ -186,16 +183,9 @@ col1, col2, col3 = st.columns(3)
 col1.metric("Total Products", len(df))
 
 avg_price = df["price"].mean()
-col2.metric(
-    "Avg Price",
-    f"{avg_price:.0f} DA" if pd.notna(avg_price) else "N/A"
-)
+col2.metric("Avg Price", f"{avg_price:.0f} DA" if pd.notna(avg_price) else "N/A")
 
-if df["segment_name"].notna().any():
-    top_segment = df["segment_name"].value_counts().idxmax()
-else:
-    top_segment = "Unknown"
-
+top_segment = df["segment_name"].value_counts().idxmax()
 col3.metric("Top Segment", top_segment)
 
 # =========================
@@ -205,17 +195,64 @@ st.subheader("📋 Live Data")
 st.dataframe(df, use_container_width=True)
 
 # =========================
-# CHART
+# CHART 1: SEGMENT COUNT
 # =========================
-st.subheader("📈 Segment Distribution")
+st.subheader("📦 Products per Segment")
 st.bar_chart(df["segment_name"].value_counts().sort_values())
+
+# =========================
+# CHART 2: PRICE DISTRIBUTION
+# =========================
+st.subheader("💰 Price Distribution")
+
+st.bar_chart(df["price"].dropna().value_counts().sort_index())
+
+# =========================
+# CHART 3: AVG PRICE BY SEGMENT
+# =========================
+st.subheader("📊 Average Price by Segment")
+
+st.bar_chart(
+    df.groupby("segment_name")["price"].mean().sort_values()
+)
+
+# =========================
+# CHART 4: SCATTER (AI CLUSTERS)
+# =========================
+st.subheader("📈 AI Cluster View")
+
+if category == "TV":
+    st.scatter_chart(df[["price", "feature"]].dropna())
+else:
+    cols = [c for c in ["price", "power", "capacity", "speeds"] if c in df.columns]
+    if len(cols) >= 2:
+        st.scatter_chart(df[cols].dropna())
+
+# =========================
+# CHART 5: TOP EXPENSIVE
+# =========================
+st.subheader("💎 Top 10 Expensive Products")
+
+st.dataframe(df.sort_values("price", ascending=False).head(10))
+
+# =========================
+# CHART 6: PIE CHART
+# =========================
+st.subheader("🥧 Market Share")
+
+fig, ax = plt.subplots()
+df["segment_name"].value_counts().plot.pie(
+    autopct="%1.1f%%",
+    ax=ax
+)
+st.pyplot(fig)
 
 # =========================
 # INSIGHT
 # =========================
 share = df["segment_name"].value_counts(normalize=True).max() * 100
 
-st.success(f"{category}: {top_segment} dominates with {share:.1f}% of products")
+st.success(f"{category}: {top_segment} dominates with {share:.1f}% share")
 
 # =========================
 # DOWNLOAD
