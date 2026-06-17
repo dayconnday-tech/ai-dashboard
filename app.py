@@ -18,14 +18,14 @@ if file:
     st.subheader("Raw Data Preview")
     st.dataframe(df.head())
 
-    # ---------------------------
-    # CATEGORY LOGIC
-    # ---------------------------
-    try:
+    df.columns = df.columns.str.strip()
 
-        # ================= TV =================
-        if category == "TV":
+    # =========================
+    # TV LOGIC
+    # =========================
+    if category == "TV":
 
+        try:
             df["price"] = (
                 df["PRIX"].astype(str)
                 .str.replace("Da", "", regex=False)
@@ -41,33 +41,52 @@ if file:
 
             feature_cols = ["price", "feature"]
 
-        # ================= PETRIN =================
-        elif category == "PETRIN":
+        except:
+            st.error("TV columns error: PRIX / POUCES")
+            st.stop()
 
+    # =========================
+    # PETRIN LOGIC
+    # =========================
+    elif category == "PETRIN":
+
+        try:
             df["price"] = (
-                df["PRIX"].astype(str)
-                .str.replace("Da", "", regex=False)
+                df["PRIX"]
+                .astype(str)
                 .str.replace(" ", "", regex=False)
                 .astype(float)
             )
 
             df["power"] = (
-                df["PUISSANCE"].astype(str)
+                df["PUISSANCE"]
+                .astype(str)
                 .str.extract(r"(\d+)")
                 .astype(float)
             )
 
             df["capacity"] = (
-                df["LITRAGE"].astype(str)
-                .str.extract(r"(\d+)")
+                df["LITTRAGE"]
+                .astype(str)
+                .str.extract(r"(\d+\.?\d*)")
                 .astype(float)
             )
 
-            feature_cols = ["price", "power", "capacity"]
+            if "Vitesses" in df.columns:
+                df["speeds"] = (
+                    df["Vitesses"]
+                    .astype(str)
+                    .str.extract(r"(\d+)")
+                    .astype(float)
+                )
+            else:
+                df["speeds"] = 0
 
-    except:
-        st.error("Check your Excel column names (PRIX / POUCES / PUISSANCE / LITRAGE)")
-        st.stop()
+            feature_cols = ["price", "power", "capacity", "speeds"]
+
+        except:
+            st.error("PETRIN column error (PRIX / PUISSANCE / LITTRAGE)")
+            st.stop()
 
     # ---------------------------
     # CLEAN DATA
@@ -81,6 +100,7 @@ if file:
     # AI SEGMENTATION
     # ---------------------------
     model = KMeans(n_clusters=4, random_state=42)
+
     clusters = model.fit_predict(df_clean[feature_cols])
 
     df.loc[df_clean.index, "segment"] = clusters
