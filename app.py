@@ -5,7 +5,7 @@ from sklearn.cluster import KMeans
 st.title("AI Product Dashboard System 🚀")
 
 # ---------------------------
-# CATEGORY SELECTION
+# CATEGORY
 # ---------------------------
 category = st.selectbox("Select Category", ["TV", "PETRIN"])
 
@@ -18,7 +18,16 @@ if file:
     st.subheader("Raw Data Preview")
     st.dataframe(df.head())
 
-    df.columns = df.columns.str.strip()
+    # ---------------------------
+    # CLEAN COLUMN NAMES (VERY IMPORTANT FIX)
+    # ---------------------------
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.upper()
+    )
+
+    st.write("Detected Columns:", df.columns.tolist())
 
     # =========================
     # TV LOGIC
@@ -27,14 +36,16 @@ if file:
 
         try:
             df["price"] = (
-                df["PRIX"].astype(str)
+                df["PRIX"]
+                .astype(str)
                 .str.replace("Da", "", regex=False)
                 .str.replace(" ", "", regex=False)
                 .astype(float)
             )
 
             df["feature"] = (
-                df["POUCES"].astype(str)
+                df["POUCES"]
+                .astype(str)
                 .str.extract(r"(\d+)")
                 .astype(float)
             )
@@ -42,7 +53,7 @@ if file:
             feature_cols = ["price", "feature"]
 
         except:
-            st.error("TV columns error: PRIX / POUCES")
+            st.error("TV ERROR → check PRIX / POUCES columns")
             st.stop()
 
     # =========================
@@ -51,6 +62,7 @@ if file:
     elif category == "PETRIN":
 
         try:
+            # PRICE
             df["price"] = (
                 df["PRIX"]
                 .astype(str)
@@ -58,6 +70,7 @@ if file:
                 .astype(float)
             )
 
+            # POWER
             df["power"] = (
                 df["PUISSANCE"]
                 .astype(str)
@@ -65,6 +78,7 @@ if file:
                 .astype(float)
             )
 
+            # CAPACITY
             df["capacity"] = (
                 df["LITTRAGE"]
                 .astype(str)
@@ -72,9 +86,10 @@ if file:
                 .astype(float)
             )
 
-            if "Vitesses" in df.columns:
+            # SPEEDS (optional safe)
+            if "VITESSES" in df.columns:
                 df["speeds"] = (
-                    df["Vitesses"]
+                    df["VITESSES"]
                     .astype(str)
                     .str.extract(r"(\d+)")
                     .astype(float)
@@ -84,8 +99,8 @@ if file:
 
             feature_cols = ["price", "power", "capacity", "speeds"]
 
-        except:
-            st.error("PETRIN column error (PRIX / PUISSANCE / LITTRAGE)")
+        except Exception as e:
+            st.error(f"PETRIN ERROR → {e}")
             st.stop()
 
     # ---------------------------
