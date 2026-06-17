@@ -2,78 +2,42 @@ import streamlit as st
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-import gspread
-from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="AI Dashboard", layout="wide")
 
-st.title("🧠 AI Product Intelligence Dashboard (LIVE GOOGLE SHEETS)")
+st.title("🧠 AI Product Intelligence Dashboard (SIMPLE MODE)")
 
 # =========================
-# GOOGLE AUTH (STREAMLIT SECRETS)
+# GOOGLE SHEETS CSV LINKS
 # =========================
-def connect_gsheets():
-    scope = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-
-    creds_dict = st.secrets["gcp_service_account"]
-
-    creds = Credentials.from_service_account_info(
-        creds_dict,
-        scopes=scope
-    )
-
-    client = gspread.authorize(creds)
-    return client
-
-client = connect_gsheets()
-
-# =========================
-# LOAD TV SHEET
-# =========================
-@st.cache_data
-def load_tv():
-    sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1zbt9FBVaMNRImI4V2nbqB0mSQ6NsVnb6APJwyznd7Bg"
-    ).sheet1
-
-    df = pd.DataFrame(sheet.get_all_records())
-    df.columns = df.columns.astype(str).str.strip().str.upper().str.replace(" ", "_")
-    df["SOURCE"] = "TV"
-    return df
-
-# =========================
-# LOAD PETRAIN SHEET
-# =========================
-@st.cache_data
-def load_petrain():
-    sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1RuyIWbjSiysb1GAVLML6EzPqVZlrsfL6AbFDjok8mTU"
-    ).sheet1
-
-    df = pd.DataFrame(sheet.get_all_records())
-    df.columns = df.columns.astype(str).str.strip().str.upper().str.replace(" ", "_")
-    df["SOURCE"] = "PETRAIN"
-    return df
-
-# =========================
-# SIDEBAR
-# =========================
-category = st.sidebar.selectbox("Select Category", ["TV", "PETRAIN", "ALL"])
+TV_URL = "https://docs.google.com/spreadsheets/d/1zbt9FBVaMNRImI4V2nbqB0mSQ6NsVnb6APJwyznd7Bg/export?format=csv"
+PETRAIN_URL = "https://docs.google.com/spreadsheets/d/1RuyIWbjSiysb1GAVLML6EzPqVZlrsfL6AbFDjok8mTU/export?format=csv"
 
 # =========================
 # LOAD DATA
 # =========================
-if category == "TV":
-    df = load_tv()
-elif category == "PETRAIN":
-    df = load_petrain()
-else:
-    df = pd.concat([load_tv(), load_petrain()], ignore_index=True)
+@st.cache_data
+def load_data(url):
+    df = pd.read_csv(url)
+    df.columns = df.columns.astype(str).str.strip().str.upper().str.replace(" ", "_")
+    return df
 
-st.subheader("📦 Live Dataset")
+tv_df = load_data(TV_URL)
+petrain_df = load_data(PETRAIN_URL)
+
+# =========================
+# CATEGORY
+# =========================
+category = st.sidebar.selectbox("Select Category", ["TV", "PETRAIN", "ALL"])
+
+if category == "TV":
+    df = tv_df
+elif category == "PETRAIN":
+    df = petrain_df
+else:
+    df = pd.concat([tv_df, petrain_df], ignore_index=True)
+
+st.subheader("📦 Dataset")
 st.dataframe(df)
 
 # =========================
@@ -91,7 +55,7 @@ def find_col(df, keywords):
 price_col = find_col(df, ["PRIX", "PRICE"])
 
 if not price_col:
-    st.error("❌ No PRICE column found in Google Sheet")
+    st.error("No PRICE column found")
     st.stop()
 
 df["price"] = pd.to_numeric(df[price_col], errors="coerce")
@@ -101,7 +65,7 @@ df["price"] = pd.to_numeric(df[price_col], errors="coerce")
 # =========================
 features = ["price"]
 
-# TV extra feature
+# TV feature
 if category != "PETRAIN":
     size_col = find_col(df, ["POUCES", "SIZE", "INCH"])
     if size_col:
@@ -111,7 +75,7 @@ if category != "PETRAIN":
         )
         features.append("feature")
 
-# PETRAIN extra features
+# PETRAIN features
 else:
     power_col = find_col(df, ["PUISSANCE", "POWER"])
     capacity_col = find_col(df, ["LITTRAGE", "CAPACITY"])
@@ -129,10 +93,8 @@ else:
 # =========================
 df_clean = df.dropna(subset=features)
 
-st.write("📊 Clean Data:", df_clean.shape)
-
 if len(df_clean) < 3:
-    st.error("Not enough data for AI clustering")
+    st.error("Not enough data")
     st.stop()
 
 # =========================
