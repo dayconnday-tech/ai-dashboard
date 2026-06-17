@@ -10,17 +10,18 @@ st.set_page_config(page_title="AI Dashboard", layout="wide")
 st.title("🧠 AI Product Intelligence Dashboard (LIVE GOOGLE SHEETS)")
 
 # =========================
-# GOOGLE SHEETS AUTH
+# GOOGLE AUTH (STREAMLIT SECRETS)
 # =========================
-@st.cache_data
 def connect_gsheets():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
 
-    creds = Credentials.from_service_account_file(
-        "credentials.json",
+    creds_dict = st.secrets["gcp_service_account"]
+
+    creds = Credentials.from_service_account_info(
+        creds_dict,
         scopes=scope
     )
 
@@ -39,10 +40,8 @@ def load_tv():
     ).sheet1
 
     df = pd.DataFrame(sheet.get_all_records())
-
     df.columns = df.columns.astype(str).str.strip().str.upper().str.replace(" ", "_")
-
-    df["source"] = "TV"
+    df["SOURCE"] = "TV"
     return df
 
 # =========================
@@ -55,14 +54,12 @@ def load_petrain():
     ).sheet1
 
     df = pd.DataFrame(sheet.get_all_records())
-
     df.columns = df.columns.astype(str).str.strip().str.upper().str.replace(" ", "_")
-
-    df["source"] = "PETRAIN"
+    df["SOURCE"] = "PETRAIN"
     return df
 
 # =========================
-# SIDEBAR SELECT
+# SIDEBAR
 # =========================
 category = st.sidebar.selectbox("Select Category", ["TV", "PETRAIN", "ALL"])
 
@@ -79,10 +76,8 @@ else:
 st.subheader("📦 Live Dataset")
 st.dataframe(df)
 
-st.write("📌 Columns:", df.columns.tolist())
-
 # =========================
-# SAFE COLUMN FINDER
+# COLUMN FINDER
 # =========================
 def find_col(df, keywords):
     for col in df.columns:
@@ -91,49 +86,42 @@ def find_col(df, keywords):
     return None
 
 # =========================
-# COMMON AI FEATURES
+# PRICE COLUMN
 # =========================
 price_col = find_col(df, ["PRIX", "PRICE"])
 
 if not price_col:
-    st.error("No PRICE column found in sheet")
+    st.error("❌ No PRICE column found in Google Sheet")
     st.stop()
 
 df["price"] = pd.to_numeric(df[price_col], errors="coerce")
 
 # =========================
-# EXTRA FEATURES
+# FEATURES
 # =========================
-if category != "PETRAIN":
+features = ["price"]
 
-    size_col = find_col(df, ["POUCES", "INCH", "SIZE"])
+# TV extra feature
+if category != "PETRAIN":
+    size_col = find_col(df, ["POUCES", "SIZE", "INCH"])
     if size_col:
         df["feature"] = pd.to_numeric(
             df[size_col].astype(str).str.extract(r"(\d+)")[0],
             errors="coerce"
         )
-
-    features = ["price"]
-
-    if "feature" in df.columns:
         features.append("feature")
 
+# PETRAIN extra features
 else:
-
     power_col = find_col(df, ["PUISSANCE", "POWER"])
     capacity_col = find_col(df, ["LITTRAGE", "CAPACITY"])
 
     if power_col:
         df["power"] = pd.to_numeric(df[power_col], errors="coerce")
+        features.append("power")
 
     if capacity_col:
         df["capacity"] = pd.to_numeric(df[capacity_col], errors="coerce")
-
-    features = ["price"]
-
-    if "power" in df.columns:
-        features.append("power")
-    if "capacity" in df.columns:
         features.append("capacity")
 
 # =========================
@@ -141,7 +129,7 @@ else:
 # =========================
 df_clean = df.dropna(subset=features)
 
-st.write("📊 Clean size:", df_clean.shape)
+st.write("📊 Clean Data:", df_clean.shape)
 
 if len(df_clean) < 3:
     st.error("Not enough data for AI clustering")
@@ -168,7 +156,7 @@ segment_map = {
 df["segment_name"] = df["segment"].map(segment_map)
 
 # =========================
-# KPI
+# KPIs
 # =========================
 st.subheader("📊 KPIs")
 
@@ -176,10 +164,7 @@ col1, col2, col3 = st.columns(3)
 
 col1.metric("Total Products", len(df))
 col2.metric("Avg Price", f"{df['price'].mean():.0f} DA")
-col3.metric(
-    "Top Segment",
-    df["segment_name"].value_counts().idxmax()
-)
+col3.metric("Top Segment", df["segment_name"].value_counts().idxmax())
 
 # =========================
 # CHARTS
@@ -191,8 +176,7 @@ st.subheader("💰 Price Distribution")
 st.bar_chart(df["price"].value_counts())
 
 st.subheader("📈 AI View")
-if len(features) >= 2:
-    st.scatter_chart(df[features].dropna())
+st.scatter_chart(df[features].dropna())
 
 # =========================
 # TOP PRODUCTS
