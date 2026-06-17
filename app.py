@@ -13,19 +13,22 @@ file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 if file:
 
+    # =========================
+    # FIX EXCEL HEADER ISSUE (IMPORTANT)
+    # =========================
     df = pd.read_excel(file)
+
+    # If Excel is broken (UNNAMED columns), fix it automatically
+    if "UNNAMED" in str(df.columns[0]).upper():
+        df = pd.read_excel(file, skiprows=0)
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
+
+    # CLEAN COLUMN NAMES
+    df.columns = df.columns.astype(str).str.strip().str.upper()
 
     st.subheader("Raw Data Preview")
     st.dataframe(df.head())
-
-    # ---------------------------
-    # CLEAN COLUMN NAMES (VERY IMPORTANT FIX)
-    # ---------------------------
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.upper()
-    )
 
     st.write("Detected Columns:", df.columns.tolist())
 
@@ -86,7 +89,7 @@ if file:
                 .astype(float)
             )
 
-            # SPEEDS (optional safe)
+            # OPTIONAL SPEEDS
             if "VITESSES" in df.columns:
                 df["speeds"] = (
                     df["VITESSES"]
@@ -103,26 +106,26 @@ if file:
             st.error(f"PETRIN ERROR → {e}")
             st.stop()
 
-    # ---------------------------
+    # =========================
     # CLEAN DATA
-    # ---------------------------
+    # =========================
     df_clean = df.dropna(subset=feature_cols)
 
     st.subheader("Cleaned Data")
     st.dataframe(df_clean[feature_cols].head())
 
-    # ---------------------------
+    # =========================
     # AI SEGMENTATION
-    # ---------------------------
+    # =========================
     model = KMeans(n_clusters=4, random_state=42)
 
     clusters = model.fit_predict(df_clean[feature_cols])
 
     df.loc[df_clean.index, "segment"] = clusters
 
-    # ---------------------------
+    # =========================
     # SEGMENT LABELS
-    # ---------------------------
+    # =========================
     segment_map = {
         0: "Budget",
         1: "Mid Range",
@@ -132,15 +135,15 @@ if file:
 
     df["segment_name"] = df["segment"].map(segment_map)
 
-    # ---------------------------
+    # =========================
     # OUTPUT
-    # ---------------------------
+    # =========================
     st.subheader("Segmented Data")
     st.dataframe(df)
 
-    # ---------------------------
+    # =========================
     # KPIs
-    # ---------------------------
+    # =========================
     st.subheader("KPIs")
 
     st.write("Total products:", len(df))
@@ -149,15 +152,15 @@ if file:
     st.subheader("KPIs by Segment")
     st.dataframe(df.groupby("segment_name")["price"].agg(["count", "mean"]))
 
-    # ---------------------------
+    # =========================
     # CHARTS
-    # ---------------------------
+    # =========================
     st.subheader("Segment Distribution")
     st.bar_chart(df["segment_name"].value_counts())
 
-    # ---------------------------
+    # =========================
     # AI INSIGHT
-    # ---------------------------
+    # =========================
     st.subheader("AI Insight")
 
     top_segment = df["segment_name"].value_counts().idxmax()
