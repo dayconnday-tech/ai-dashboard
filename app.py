@@ -14,37 +14,68 @@ st.title("🧠 AI Product Intelligence Dashboard")
 category = st.sidebar.selectbox("Select Category", ["TV", "PETRIN"])
 
 # =========================
-# FILE UPLOAD
+# UPLOAD FILE
 # =========================
-file = st.sidebar.file_uploader("Upload NEW Excel (updates system)", type=["xlsx"])
+file = st.sidebar.file_uploader("Upload NEW Excel", type=["xlsx"])
 
 DATA_PATH = "latest_data.xlsx"
 
-# =========================
-# SAVE FILE
-# =========================
 if file:
     with open(DATA_PATH, "wb") as f:
         f.write(file.getbuffer())
     st.success("✅ New data uploaded & saved")
 
 # =========================
-# LOAD FILE
+# SMART EXCEL LOADER (ROBUST)
+# =========================
+def load_excel(path):
+    xls = pd.ExcelFile(path)
+    sheet = xls.sheet_names[0]
+
+    df = pd.read_excel(path, sheet_name=sheet)
+
+    # remove empty rows
+    df = df.dropna(how="all")
+
+    # fix broken headers (Unnamed case)
+    if df.columns.astype(str).str.contains("Unnamed").all():
+        df = pd.read_excel(path, sheet_name=sheet, header=None)
+        df = df.dropna(how="all")
+
+        # find first valid header row
+        for i in range(min(10, len(df))):
+            if df.iloc[i].notna().sum() > 2:
+                df.columns = df.iloc[i]
+                df = df[i + 1 :]
+                break
+
+    df = df.reset_index(drop=True)
+
+    df.columns = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.upper()
+        .str.replace(" ", "_")
+    )
+
+    return df
+
+# =========================
+# LOAD DATA
 # =========================
 if os.path.exists(DATA_PATH):
-    df = pd.read_excel(DATA_PATH)
-    df.columns = df.columns.astype(str).str.strip().str.upper()
+    df = load_excel(DATA_PATH)
 else:
     st.info("Upload Excel to start")
     st.stop()
 
-st.subheader("📦 Latest Dataset")
+st.subheader("📦 Dataset Preview")
 st.dataframe(df.head())
 
 st.write("📌 Columns detected:", df.columns.tolist())
 
 # =========================
-# SAFE COLUMN FINDER
+# COLUMN FINDER
 # =========================
 def find_col(df, keywords):
     for col in df.columns:
@@ -53,20 +84,20 @@ def find_col(df, keywords):
     return None
 
 # =========================
-# CATEGORY LOGIC
+# TV LOGIC
 # =========================
 if category == "TV":
 
     price_col = find_col(df, ["PRIX", "PRICE"])
-    size_col = find_col(df, ["POUCES", "SIZE", "INCH"])
+    size_col = find_col(df, ["POUCES", "INCH", "SIZE"])
 
     if not price_col or not size_col:
-        st.error("Missing required columns for TV (PRIX / POUCES)")
+        st.error("Missing TV columns (PRIX / POUCES)")
         st.stop()
 
     df["price"] = pd.to_numeric(
         df[price_col].astype(str)
-        .str.replace("Da", "", regex=False)
+        .str.replace("DA", "", regex=False)
         .str.replace(" ", "", regex=False),
         errors="coerce"
     )
@@ -78,6 +109,9 @@ if category == "TV":
 
     features = ["price", "feature"]
 
+# =========================
+# PETRIN LOGIC
+# =========================
 else:
 
     price_col = find_col(df, ["PRIX", "PRICE"])
@@ -86,13 +120,10 @@ else:
     speed_col = find_col(df, ["VITESSES", "SPEED"])
 
     if not price_col or not power_col or not capacity_col:
-        st.error("Missing required PETRIN columns")
+        st.error("Missing PETRIN columns")
         st.stop()
 
-    df["price"] = pd.to_numeric(
-        df[price_col].astype(str).str.replace(" ", "", regex=False),
-        errors="coerce"
-    )
+    df["price"] = pd.to_numeric(df[price_col], errors="coerce")
 
     df["power"] = pd.to_numeric(
         df[power_col].astype(str).str.extract(r"(\d+)")[0],
@@ -121,14 +152,14 @@ df_clean = df.dropna(subset=features)
 
 st.write("📊 Clean dataset size:", df_clean.shape)
 
-if df_clean.empty:
-    st.error("No valid numeric data for clustering")
+if len(df_clean) < 3:
+    st.error("Not enough valid data for clustering (minimum 3 rows required)")
     st.stop()
 
 # =========================
 # SAFE KMEANS
 # =========================
-n_clusters = min(4, len(df_clean))
+n_clusters = max(2, min(4, len(df_clean)))
 
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(df_clean[features])
@@ -160,7 +191,11 @@ col2.metric(
     f"{avg_price:.0f} DA" if pd.notna(avg_price) else "N/A"
 )
 
-top_segment = df["segment_name"].value_counts().idxmax()
+if df["segment_name"].notna().any():
+    top_segment = df["segment_name"].value_counts().idxmax()
+else:
+    top_segment = "Unknown"
+
 col3.metric("Top Segment", top_segment)
 
 # =========================
@@ -180,9 +215,7 @@ st.bar_chart(df["segment_name"].value_counts().sort_values())
 # =========================
 share = df["segment_name"].value_counts(normalize=True).max() * 100
 
-st.success(
-    f"{category}: {top_segment} dominates with {share:.1f}% of products"
-)
+st.success(f"{category}: {top_segment} dominates with {share:.1f}% of products")
 
 # =========================
 # DOWNLOAD
