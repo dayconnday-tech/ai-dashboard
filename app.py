@@ -10,7 +10,7 @@ st.title("AI Product Dashboard System 🚀")
 category = st.selectbox("Select Category", ["TV"])
 
 # ---------------------------
-# UPLOAD EXCEL
+# UPLOAD FILE
 # ---------------------------
 file = st.file_uploader("Upload TV Excel File", type=["xlsx"])
 
@@ -22,7 +22,7 @@ if file:
     st.dataframe(df.head())
 
     # ---------------------------
-    # CLEAN DATA (TV ONLY)
+    # CLEAN DATA
     # ---------------------------
     try:
         df["price"] = (
@@ -40,20 +40,20 @@ if file:
             .astype(float)
         )
 
-    except Exception as e:
-        st.error("Error in column names or format (PRIX / POUCES)")
+    except:
+        st.error("Check column names: PRIX / POUCES")
         st.stop()
 
     st.subheader("Cleaned Data")
     st.dataframe(df[["price", "size"]].head())
 
     # ---------------------------
-    # REMOVE MISSING VALUES
+    # REMOVE NULLS
     # ---------------------------
     df_clean = df.dropna(subset=["price", "size"])
 
     # ---------------------------
-    # AI SEGMENTATION (KMEANS)
+    # AI SEGMENTATION
     # ---------------------------
     features = df_clean[["price", "size"]]
 
@@ -63,7 +63,19 @@ if file:
     df.loc[df_clean.index, "segment"] = clusters
 
     # ---------------------------
-    # RESULTS
+    # SEGMENT LABELS
+    # ---------------------------
+    segment_map = {
+        0: "Budget",
+        1: "Mid Range",
+        2: "Premium",
+        3: "Flagship"
+    }
+
+    df["segment_name"] = df["segment"].map(segment_map)
+
+    # ---------------------------
+    # FINAL DATA
     # ---------------------------
     st.subheader("Segmented Data")
     st.dataframe(df)
@@ -76,9 +88,20 @@ if file:
     st.write("Total products:", len(df))
     st.write("Average price:", round(df["price"].mean(), 2))
 
+    st.subheader("KPIs by Segment")
+    st.dataframe(df.groupby("segment_name")["price"].agg(["count", "mean"]))
+
     # ---------------------------
-    # VISUALIZATION
+    # CHARTS
     # ---------------------------
     st.subheader("Segment Distribution")
+    st.bar_chart(df["segment_name"].value_counts())
 
-    st.bar_chart(df["segment"].value_counts())
+    # ---------------------------
+    # AI INSIGHT
+    # ---------------------------
+    st.subheader("AI Insight")
+
+    top_segment = df["segment_name"].value_counts().idxmax()
+
+    st.success(f"Dominant market segment: {top_segment}")
