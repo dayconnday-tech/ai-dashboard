@@ -2,167 +2,117 @@ import streamlit as st
 import pandas as pd
 from sklearn.cluster import KMeans
 
-st.title("AI Product Dashboard System 🚀")
+# =========================
+# PAGE CONFIG (IMPORTANT UI UPGRADE)
+# =========================
+st.set_page_config(page_title="AI Dashboard", layout="wide")
 
-# ---------------------------
-# CATEGORY
-# ---------------------------
-category = st.selectbox("Select Category", ["TV", "PETRIN"])
+st.title("🧠 AI Product Intelligence Dashboard")
 
-file = st.file_uploader("Upload Excel File", type=["xlsx"])
+# =========================
+# SIDEBAR (CLEAN NAV)
+# =========================
+st.sidebar.header("Controls")
 
+category = st.sidebar.selectbox("Select Category", ["TV", "PETRIN"])
+file = st.sidebar.file_uploader("Upload Excel File", type=["xlsx"])
+
+# =========================
+# MAIN APP
+# =========================
 if file:
 
-    # =========================
-    # FIX EXCEL HEADER ISSUE (IMPORTANT)
-    # =========================
     df = pd.read_excel(file)
 
-    # If Excel is broken (UNNAMED columns), fix it automatically
-    if "UNNAMED" in str(df.columns[0]).upper():
-        df = pd.read_excel(file, skiprows=0)
-        df.columns = df.iloc[0]
-        df = df[1:].reset_index(drop=True)
-
-    # CLEAN COLUMN NAMES
     df.columns = df.columns.astype(str).str.strip().str.upper()
 
-    st.subheader("Raw Data Preview")
+    st.subheader("📦 Raw Data Preview")
     st.dataframe(df.head())
 
-    st.write("Detected Columns:", df.columns.tolist())
-
     # =========================
-    # TV LOGIC
+    # TV
     # =========================
     if category == "TV":
 
-        try:
-            df["price"] = (
-                df["PRIX"]
-                .astype(str)
-                .str.replace("Da", "", regex=False)
-                .str.replace(" ", "", regex=False)
-                .astype(float)
-            )
+        df["price"] = (
+            df["PRIX"].astype(str)
+            .str.replace("Da", "", regex=False)
+            .str.replace(" ", "", regex=False)
+            .astype(float)
+        )
 
-            df["feature"] = (
-                df["POUCES"]
-                .astype(str)
-                .str.extract(r"(\d+)")
-                .astype(float)
-            )
+        df["feature"] = (
+            df["POUCES"].astype(str)
+            .str.extract(r"(\d+)")
+            .astype(float)
+        )
 
-            feature_cols = ["price", "feature"]
-
-        except:
-            st.error("TV ERROR → check PRIX / POUCES columns")
-            st.stop()
+        features = ["price", "feature"]
 
     # =========================
-    # PETRIN LOGIC
+    # PETRIN
     # =========================
-    elif category == "PETRIN":
+    else:
 
-        try:
-            # PRICE
-            df["price"] = (
-                df["PRIX"]
-                .astype(str)
-                .str.replace(" ", "", regex=False)
-                .astype(float)
-            )
+        df["price"] = (
+            df["PRIX"].astype(str)
+            .str.replace(" ", "", regex=False)
+            .astype(float)
+        )
 
-            # POWER
-            df["power"] = (
-                df["PUISSANCE"]
-                .astype(str)
-                .str.extract(r"(\d+)")
-                .astype(float)
-            )
+        df["power"] = df["PUISSANCE"].astype(str).str.extract(r"(\d+)").astype(float)
+        df["capacity"] = df["LITTRAGE"].astype(str).str.extract(r"(\d+\.?\d*)").astype(float)
 
-            # CAPACITY
-            df["capacity"] = (
-                df["LITTRAGE"]
-                .astype(str)
-                .str.extract(r"(\d+\.?\d*)")
-                .astype(float)
-            )
+        if "VITESSES" in df.columns:
+            df["speeds"] = df["VITESSES"].astype(str).str.extract(r"(\d+)").astype(float)
+        else:
+            df["speeds"] = 0
 
-            # OPTIONAL SPEEDS
-            if "VITESSES" in df.columns:
-                df["speeds"] = (
-                    df["VITESSES"]
-                    .astype(str)
-                    .str.extract(r"(\d+)")
-                    .astype(float)
-                )
-            else:
-                df["speeds"] = 0
-
-            feature_cols = ["price", "power", "capacity", "speeds"]
-
-        except Exception as e:
-            st.error(f"PETRIN ERROR → {e}")
-            st.stop()
+        features = ["price", "power", "capacity", "speeds"]
 
     # =========================
     # CLEAN DATA
     # =========================
-    df_clean = df.dropna(subset=feature_cols)
-
-    st.subheader("Cleaned Data")
-    st.dataframe(df_clean[feature_cols].head())
+    df_clean = df.dropna(subset=features)
 
     # =========================
     # AI SEGMENTATION
     # =========================
     model = KMeans(n_clusters=4, random_state=42)
+    df.loc[df_clean.index, "segment"] = model.fit_predict(df_clean[features])
 
-    clusters = model.fit_predict(df_clean[feature_cols])
-
-    df.loc[df_clean.index, "segment"] = clusters
-
-    # =========================
-    # SEGMENT LABELS
-    # =========================
-    segment_map = {
-        0: "Budget",
-        1: "Mid Range",
-        2: "Premium",
-        3: "Flagship"
-    }
-
+    segment_map = {0: "Budget", 1: "Mid Range", 2: "Premium", 3: "Flagship"}
     df["segment_name"] = df["segment"].map(segment_map)
 
     # =========================
-    # OUTPUT
+    # KPI CARDS (NEW UI)
     # =========================
-    st.subheader("Segmented Data")
-    st.dataframe(df)
+    st.subheader("📊 KPIs")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total Products", len(df))
+    col2.metric("Average Price", f"{df['price'].mean():.0f} DA")
+    col3.metric("Top Segment", df["segment_name"].value_counts().idxmax())
 
     # =========================
-    # KPIs
+    # DATA TABLE
     # =========================
-    st.subheader("KPIs")
-
-    st.write("Total products:", len(df))
-    st.write("Average price:", round(df["price"].mean(), 2))
-
-    st.subheader("KPIs by Segment")
-    st.dataframe(df.groupby("segment_name")["price"].agg(["count", "mean"]))
+    st.subheader("📋 Segmented Data")
+    st.dataframe(df, use_container_width=True)
 
     # =========================
     # CHARTS
     # =========================
-    st.subheader("Segment Distribution")
+    st.subheader("📈 Segment Distribution")
     st.bar_chart(df["segment_name"].value_counts())
 
     # =========================
-    # AI INSIGHT
+    # INSIGHT BOX
     # =========================
-    st.subheader("AI Insight")
+    st.subheader("🧠 AI Insight")
 
-    top_segment = df["segment_name"].value_counts().idxmax()
-
-    st.success(f"{category} dominant segment: {top_segment}")
+    st.success(
+        f"{category} market is dominated by "
+        f"**{df['segment_name'].value_counts().idxmax()}** segment"
+    )
