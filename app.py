@@ -1,14 +1,97 @@
-# =========================
-# AI MODEL
-# =========================
+import streamlit as st
+import pandas as pd
+import os
+from sklearn.cluster import KMeans
 
+# =========================
+# PAGE CONFIG
+# =========================
+st.set_page_config(page_title="AI Dashboard", layout="wide")
+
+st.title("🧠 AI Product Intelligence Dashboard")
+
+# =========================
+# SIDEBAR
+# =========================
+category = st.sidebar.selectbox("Select Category", ["TV", "PETRIN"])
+file = st.sidebar.file_uploader("Upload NEW Excel (updates system)", type=["xlsx"])
+
+# =========================
+# SAVE LATEST FILE
+# =========================
+DATA_PATH = "latest_data.xlsx"
+
+if file:
+    with open(DATA_PATH, "wb") as f:
+        f.write(file.getbuffer())
+    st.success("✅ New data uploaded & saved")
+
+# =========================
+# LOAD DATA
+# =========================
+if os.path.exists(DATA_PATH):
+    df = pd.read_excel(DATA_PATH)
+    df.columns = df.columns.astype(str).str.strip().str.upper()
+else:
+    st.info("Upload Excel file to start")
+    st.stop()
+
+# =========================
+# SHOW RAW DATA
+# =========================
+st.subheader("📦 Latest Dataset")
+st.dataframe(df.head())
+
+# =========================
+# FEATURES BY CATEGORY
+# =========================
+if category == "TV":
+
+    df["price"] = (
+        df["PRIX"].astype(str)
+        .str.replace("DA", "", regex=False)
+        .str.replace(" ", "", regex=False)
+        .astype(float)
+    )
+
+    df["feature"] = (
+        df["POUCES"].astype(str)
+        .str.extract(r"(\d+)")
+        .astype(float)
+    )
+
+    features = ["price", "feature"]
+
+else:  # PETRIN
+
+    df["price"] = (
+        df["PRIX"].astype(str)
+        .str.replace(" ", "", regex=False)
+        .astype(float)
+    )
+
+    df["power"] = df["PUISSANCE"].astype(str).str.extract(r"(\d+)").astype(float)
+    df["capacity"] = df["LITTRAGE"].astype(str).str.extract(r"(\d+\.?\d*)").astype(float)
+
+    if "VITESSES" in df.columns:
+        df["speeds"] = df["VITESSES"].astype(str).str.extract(r"(\d+)").astype(float)
+    else:
+        df["speeds"] = 0
+
+    features = ["price", "power", "capacity", "speeds"]
+
+# =========================
+# CLEAN DATA
+# =========================
+df_clean = df.dropna(subset=features)
+
+# =========================
+# AI SEGMENTATION
+# =========================
 model = KMeans(n_clusters=4, random_state=42)
 df.loc[df_clean.index, "cluster"] = model.fit_predict(df_clean[features])
 
-# --------------------------------
-# Dynamic Segment Naming
-# --------------------------------
-
+# ORDER CLUSTERS BY PRICE (IMPORTANT FIX)
 cluster_order = (
     df.groupby("cluster")["price"]
     .mean()
@@ -27,82 +110,65 @@ segment_map = {
 df["segment_name"] = df["cluster"].map(segment_map)
 
 # =========================
-# KPI UI
+# KPI DASHBOARD
 # =========================
+st.header("📊 KPIs")
 
-st.header("📊 KPI Dashboard")
-
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 
 col1.metric("Products", len(df))
-col2.metric("Brands", df["BRAND"].nunique() if "BRAND" in df.columns else 0)
-col3.metric("Average Price", f"{df['price'].mean():,.0f} DA")
-col4.metric("Max Price", f"{df['price'].max():,.0f} DA")
+col2.metric("Avg Price", f"{df['price'].mean():.0f} DA")
+col3.metric("Top Segment", df["segment_name"].value_counts().idxmax())
 
 # =========================
 # DATA TABLE
 # =========================
-
-st.header("📋 Product Database")
+st.header("📋 Live Data")
 st.dataframe(df, use_container_width=True)
 
 # =========================
-# SEGMENT DISTRIBUTION
+# SEGMENT CHART
 # =========================
-
 st.header("📈 Market Segmentation")
 
-st.bar_chart(
-    df["segment_name"].value_counts()
-)
+st.bar_chart(df["segment_name"].value_counts())
 
 # =========================
 # BRAND ANALYSIS
 # =========================
-
 if "BRAND" in df.columns:
 
-    st.header("🏷️ Brand Market Share")
+    st.header("🏷️ Brand Analysis")
 
-    brand_share = (
-        df["BRAND"]
-        .value_counts()
-        .reset_index()
-    )
+    st.dataframe(df["BRAND"].value_counts().reset_index().rename(columns={
+        "index": "Brand",
+        "BRAND": "Products"
+    }))
 
-    brand_share.columns = ["Brand", "Products"]
-
-    st.dataframe(brand_share)
-
-    st.bar_chart(
-        df["BRAND"].value_counts()
-    )
+    st.bar_chart(df["BRAND"].value_counts())
 
 # =========================
 # MARKET STUDY
 # =========================
-
 st.header("📖 Étude de Marché")
 
-total_products = len(df)
-
-avg_price = round(df["price"].mean(), 0)
-min_price = round(df["price"].min(), 0)
-max_price = round(df["price"].max(), 0)
+total = len(df)
+avg_price = df["price"].mean()
+min_price = df["price"].min()
+max_price = df["price"].max()
 
 st.markdown(f"""
 ### Vue Générale
 
-- Produits analysés : **{total_products}**
+- Produits analysés : **{total}**
 - Prix moyen : **{avg_price:,.0f} DA**
 - Prix minimum : **{min_price:,.0f} DA**
 - Prix maximum : **{max_price:,.0f} DA**
 """)
 
 # =========================
-# SEGMENT REPORTS
+# SEGMENT REPORT
 # =========================
-
 for seg in [
     "Entrée de Gamme",
     "Milieu de Gamme",
@@ -115,95 +181,23 @@ for seg in [
     if len(seg_df) == 0:
         continue
 
-    avg_seg_price = round(seg_df["price"].mean(), 0)
-
-    min_seg_price = round(seg_df["price"].min(), 0)
-    max_seg_price = round(seg_df["price"].max(), 0)
-
-    market_share = round(
-        len(seg_df) / len(df) * 100,
-        1
-    )
-
-    if "BRAND" in seg_df.columns:
-
-        top_brands = (
-            seg_df["BRAND"]
-            .value_counts()
-            .head(3)
-            .index
-            .tolist()
-        )
-
-        top_brands = ", ".join(top_brands)
-
-    else:
-        top_brands = "N/A"
-
     st.markdown(f"""
 ## {seg}
 
-- Market Share : **{market_share}%**
-- Products : **{len(seg_df)}**
-- Average Price : **{avg_seg_price:,.0f} DA**
-- Price Range : **{min_seg_price:,.0f} → {max_seg_price:,.0f} DA**
-- Dominant Brands : **{top_brands}**
+- Produits : {len(seg_df)}
+- Part de marché : {round(len(seg_df)/len(df)*100,1)}%
+- Prix moyen : {seg_df['price'].mean():.0f} DA
+- Prix min → max : {seg_df['price'].min():.0f} → {seg_df['price'].max():.0f} DA
 """)
 
 # =========================
-# CATEGORY SPECIFIC INSIGHT
+# AI INSIGHT (FINAL MARKET VIEW)
 # =========================
+st.header("🧠 AI Market Insight")
 
-st.header("🧠 AI Market Analysis")
+st.success(f"""
+The {category} market is mainly driven by the **{df['segment_name'].value_counts().idxmax()}** segment.
 
-if category == "TV":
-
-    st.info("""
-### Television Market Positioning
-
-**Entrée de Gamme**
-- Mainly 32" to 43"
-- Standard LED TVs
-- Dominated by local/value brands
-- Focus on affordability
-
-**Milieu de Gamme**
-- 43" to 55"
-- Smart TV + 4K UHD
-- Mainstream consumer market
-
-**Milieu-Haut de Gamme**
-- 55" to 65"
-- QLED / advanced image quality
-- Premium entertainment positioning
-
-**Haut de Gamme**
-- Large screens
-- OLED / Mini LED / flagship models
-- High-performance segment
-""")
-
-elif category == "PETRIN":
-
-    st.info("""
-### Petrin Market Positioning
-
-**Entrée de Gamme**
-- 5L to 8L capacity
-- Value-oriented products
-- Suitable for household use
-
-**Milieu de Gamme**
-- Better capacity and power
-- Balanced price/performance
-
-**Milieu-Haut de Gamme**
-- Strong motors
-- Larger bowls
-- Frequent-use customers
-
-**Haut de Gamme**
-- Premium brands
-- Professional-oriented products
-- Maximum performance and durability
+This indicates that the market is concentrated in mid-level affordability products,
+with clear opportunities in underrepresented price ranges.
 """)
